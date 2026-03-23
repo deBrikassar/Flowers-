@@ -1,6 +1,6 @@
 import { emptyPlant, emptySeedlingTask, recommendationLibrary } from './data.js';
-import { actions, getState, selectors, subscribe } from './store.js';
-import { compareDateStrings, dateRange, dueLabel, formatDate, formatMonthDay, startOfMonthGrid, today } from './utils.js';
+import { actions, auth, getSession, getState, selectors, subscribe } from './store.js';
+import { compareDateStrings, dateRange, dueLabel, formatDate, formatMonthDay, startOfMonthGrid, today, daysUntil } from './utils.js';
 
 const app = document.querySelector('#app');
 
@@ -20,14 +20,21 @@ const uiState = {
   seedlingError: '',
   noteDraft: '',
   conditionDraft: 'Good',
+  authMode: '',
+  authDraft: '',
+  authError: '',
+  authBusy: false,
+  copyMessage: '',
+  isBooting: true,
 };
 
+const tabs = ['dashboard', 'plants', 'watering', 'seedlings', 'settings'];
 const icons = {
   dashboard: '☀️',
   plants: '🪴',
   watering: '💧',
   seedlings: '🌱',
-  recommendations: '✨',
+  settings: '⚙️',
 };
 
 const conditionTone = (condition) => ({ Good: 'success', Okay: 'neutral', 'Needs attention': 'warning', Sick: 'warning' }[condition] || 'neutral');
@@ -38,7 +45,33 @@ const eventLabel = (event) => {
   return 'Note added';
 };
 
-const escapeHtml = (value = '') => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+
+const resetSessionUi = () => {
+  uiState.tab = 'dashboard';
+  uiState.selectedPlantId = null;
+  uiState.wateringMonth = new Date();
+  uiState.wateringDate = today();
+  uiState.seedlingMonth = new Date();
+  uiState.showPlantModal = false;
+  uiState.plantDraft = emptyPlant();
+  uiState.editingPlantId = null;
+  uiState.plantError = '';
+  uiState.showSeedlingModal = false;
+  uiState.seedlingDraft = emptySeedlingTask();
+  uiState.editingSeedlingId = null;
+  uiState.seedlingError = '';
+  uiState.noteDraft = '';
+  uiState.conditionDraft = 'Good';
+  uiState.copyMessage = '';
+};
+
+const setAuthBusy = (busy, callback) => {
+  uiState.authBusy = busy;
+  render();
+  if (!busy || !callback) return;
+  window.setTimeout(callback, 120);
+};
 
 const openPlantModal = (plant = emptyPlant(), plantId = null) => {
   uiState.showPlantModal = true;
@@ -56,6 +89,23 @@ const openSeedlingModal = (task = emptySeedlingTask(), taskId = null) => {
   render();
 };
 
+const copyText = async (value) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return true;
+  }
+  const input = document.createElement('textarea');
+  input.value = value;
+  input.setAttribute('readonly', '');
+  input.style.position = 'absolute';
+  input.style.left = '-9999px';
+  document.body.appendChild(input);
+  input.select();
+  const copied = document.execCommand('copy');
+  document.body.removeChild(input);
+  return copied;
+};
+
 const card = (title, body, action = '') => `
   <section class="surface-card">
     <div class="card-header">
@@ -66,15 +116,16 @@ const card = (title, body, action = '') => `
   </section>
 `;
 
-const emptyState = (title, message) => `<div class="empty-state"><strong>${title}</strong><p>${message}</p></div>`;
+const emptyState = (title, message, action = '') => `<div class="empty-state"><strong>${title}</strong><p>${message}</p>${action}</div>`;
+const loadingState = (label) => `<div class="loading-state" aria-live="polite"><span class="loading-dot"></span><strong>${label}</strong></div>`;
 
 const plantTaskList = (plants) => {
   if (!plants.length) return emptyState('Nothing here', 'There are no plants in this list right now.');
   return `<div class="list-stack">${plants.map((plant) => `
-      <div class="list-row">
+      <div class="list-row task-row">
         <button class="text-button" data-action="select-plant" data-id="${plant.id}">
           <strong>${escapeHtml(plant.photo)} ${escapeHtml(plant.name)}</strong>
-          <p>${escapeHtml(plant.location)} · ${formatMonthDay(selectors.nextWateringDate(plant))}</p>
+          <p>${escapeHtml(plant.condition)} · Next ${formatMonthDay(selectors.nextWateringDate(plant))}</p>
         </button>
         <div class="row-actions">
           <span class="badge ${selectors.wateringState(plant) === 'overdue' ? 'warning' : selectors.wateringState(plant) === 'today' ? 'today' : 'neutral'}">${dueLabel(selectors.nextWateringDate(plant))}</span>
@@ -111,7 +162,7 @@ const buildWateringCalendar = (plants) => {
         </div>
       `, anchor.toLocaleString('en-US', { month: 'long', year: 'numeric' }))}
       ${card('Daily agenda', agenda.length ? `<div class="list-stack">${agenda.map((plant) => `
-          <div class="list-row">
+          <div class="list-row task-row">
             <div><strong>${escapeHtml(plant.photo)} ${escapeHtml(plant.name)}</strong><p>${escapeHtml(plant.location)}</p></div>
             <div class="row-actions">
               <button class="ghost-button" data-action="jump-to-plant" data-id="${plant.id}">Details</button>
@@ -129,7 +180,7 @@ const buildSeedlingCalendar = (tasks) => {
       <p class="muted-block">${escapeHtml(task.notes || 'No notes added.')}</p>
       <div class="timeline">
         ${task.stages.sort((a, b) => compareDateStrings(a.date, b.date)).map((stage) => `
-          <div class="list-row">
+          <div class="list-row task-row">
             <div>
               <strong>${stage.name}</strong>
               <p>${formatDate(stage.date)}</p>
@@ -144,7 +195,7 @@ const buildSeedlingCalendar = (tasks) => {
         <button class="secondary-button" data-action="edit-seedling" data-id="${task.id}">Edit</button>
         <button class="ghost-button danger" data-action="archive-seedling" data-id="${task.id}">Archive</button>
       </div>
-    `, 'Stage tracking')).join('') : card('Seedling plans', emptyState('No seedling plans yet', 'Add a plan to track sprouting and transplant milestones.'));
+    `, 'Stage tracking')).join('') : card('Seedling plans', emptyState('No seedling plans yet', 'Add a plan to track sprouting and transplant milestones.', '<button class="primary-button" data-action="open-add-seedling">Add seedling plan</button>'));
 
   return `
     <div class="stack-lg">
@@ -173,7 +224,7 @@ const buildSeedlingCalendar = (tasks) => {
 
 const dashboardMarkup = (snapshot) => {
   const overview = selectors.dashboard(snapshot);
-  const repotSoonCount = selectors.activePlants(snapshot).filter((plant) => compareDateStrings(selectors.nextRepottingDate(plant), today()) <= 14 * 24 * 60 * 60 * 1000).length;
+  const repotSoonCount = selectors.activePlants(snapshot).filter((plant) => daysUntil(selectors.nextRepottingDate(plant)) <= 14).length;
   return `
     <section class="stack-lg">
       <div class="section-header"><div><h2>Today at a glance</h2><p>Quick actions for the most time-sensitive care tasks.</p></div></div>
@@ -190,7 +241,7 @@ const dashboardMarkup = (snapshot) => {
             <span class="badge neutral">${dueLabel(selectors.nextRepottingDate(plant))}</span>
           </button>`).join('')}</div>` : emptyState('No repotting tasks', 'Your repotting schedule is clear right now.'), 'Next 4 plants')}
       ${card('Seedling milestones', overview.milestones.length ? `<div class="list-stack">${overview.milestones.map((stage) => `
-          <div class="list-row"><div><strong>${escapeHtml(stage.plantName)}</strong><p>${stage.name}</p></div><span class="badge ${stage.status === 'Done' ? 'success' : stage.status === 'Due' ? 'warning' : 'neutral'}">${formatMonthDay(stage.date)}</span></div>`).join('')}</div>` : emptyState('No milestones yet', 'Add a seedling plan to track key stage dates.'), 'Planning board')}
+          <div class="list-row task-row"><div><strong>${escapeHtml(stage.plantName)}</strong><p>${stage.name}</p></div><span class="badge ${stage.status === 'Done' ? 'success' : stage.status === 'Due' ? 'warning' : 'neutral'}">${formatMonthDay(stage.date)}</span></div>`).join('')}</div>` : emptyState('No milestones yet', 'Add a seedling plan to track key stage dates.'), 'Planning board')}
     </section>`;
 };
 
@@ -211,7 +262,7 @@ const plantSectionMarkup = (snapshot) => {
                 <span class="badge ${conditionTone(plant.condition)}">${plant.condition}</span>
               </div>
               <div class="plant-meta-row"><span>${escapeHtml(plant.location)}</span><span>${dueLabel(selectors.nextWateringDate(plant))}</span></div>
-            </button>`).join('')}</div>` : emptyState('No plants added', 'Add your first plant to start tracking watering and repotting.'), `${plants.length} active`)}
+            </button>`).join('')}</div>` : emptyState('No plants added', 'Add your first plant to start tracking watering and repotting.', '<button class="primary-button" data-action="open-add-plant">Add plant</button>'), `${plants.length} active`)}
       </div>
       <div class="stack-md">
         ${selectedPlant ? card(`${escapeHtml(selectedPlant.photo)} ${escapeHtml(selectedPlant.name)}`, `
@@ -233,7 +284,7 @@ const plantSectionMarkup = (snapshot) => {
         `, escapeHtml(selectedPlant.species)) : card('Plant detail', emptyState('Choose a plant', 'Select a plant from the list or add one to see detail and timeline data.'))}
         ${selectedPlant ? card('Quick update', `
             <div class="inline-form-grid">
-              <label>Condition<select id="condition-draft">${['Good', 'Okay', 'Needs attention', 'Sick'].map((option) => `<option ${uiState.conditionDraft === option ? 'selected' : ''}>${option}</option>`).join('')}</select></label>
+              <label>Condition<select id="condition-draft"><option>Good</option><option>Okay</option><option>Needs attention</option><option>Sick</option></select></label>
               <div class="align-end"><button class="secondary-button" data-action="save-condition" data-id="${selectedPlant.id}">Save condition</button></div>
               <label class="full-width">Add note<textarea id="note-draft" rows="4" placeholder="Log an observation or care reminder">${escapeHtml(uiState.noteDraft)}</textarea></label>
               <button class="secondary-button" data-action="save-note" data-id="${selectedPlant.id}">Add note to history</button>
@@ -265,8 +316,40 @@ const recommendationsMarkup = (snapshot) => {
         <div><span class="info-label">Basic tips</span><ul class="chip-list">${rec.tips.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>
       </div>
     `, escapeHtml(rec.label));
-  }).join('') : card('Recommendations', emptyState('No plants yet', 'Plant recommendations will appear once you add a plant.'));
-  return `<section class="stack-lg"><div class="section-header"><div><h2>Plant recommendations</h2><p>Compact care guidance that is quick to scan while you work.</p></div></div><div class="recommendation-grid">${body}</div></section>`;
+  }).join('') : card('Care guides', emptyState('No plants yet', 'Plant recommendations will appear once you add a plant.'));
+  return `<div class="stack-lg"><div class="section-header"><div><h2>Care guides</h2><p>Compact care guidance that is quick to scan while you work.</p></div></div><div class="recommendation-grid">${body}</div></div>`;
+};
+
+const settingsMarkup = (snapshot, session) => {
+  const plantCount = selectors.activePlants(snapshot).length;
+  const taskCount = selectors.activeSeedlingTasks(snapshot).length;
+  return `
+    <section class="stack-lg">
+      <div class="section-header"><div><h2>Settings & profile</h2><p>Manage your local plant profile and keep your ID handy for future sign-ins.</p></div></div>
+      <div class="settings-grid">
+        ${card('Profile', `
+          <div class="profile-block">
+            <span class="info-label">Your plant ID</span>
+            <strong class="user-id-display">${escapeHtml(session.userId)}</strong>
+            <p class="muted-block">This ID scopes your plants, watering logs, and seedling plans on this device. You can later connect the same ID to a backend.</p>
+          </div>
+          <div class="action-grid">
+            <button class="secondary-button" data-action="copy-user-id">Copy ID</button>
+            <button class="ghost-button danger" data-action="logout">Log out</button>
+          </div>
+          ${uiState.copyMessage ? `<p class="helper-text">${escapeHtml(uiState.copyMessage)}</p>` : ''}
+        `, 'Local profile')}
+        ${card('Account summary', `
+          <div class="detail-grid">
+            <div><span class="info-label">Active plants</span><strong>${plantCount}</strong></div>
+            <div><span class="info-label">Seedling plans</span><strong>${taskCount}</strong></div>
+            <div><span class="info-label">Upcoming watering</span><strong>${selectors.wateringGroups(snapshot).upcoming.length}</strong></div>
+            <div><span class="info-label">Reminder-ready entries</span><strong>${selectors.notificationSummary(snapshot).length}</strong></div>
+          </div>
+        `, 'Device storage')}
+      </div>
+      ${recommendationsMarkup(snapshot)}
+    </section>`;
 };
 
 const renderPlantModal = () => {
@@ -275,7 +358,7 @@ const renderPlantModal = () => {
   return `
     <div class="modal-backdrop">
       <div class="modal-card">
-        <div class="modal-header"><h2>${uiState.editingPlantId ? 'Edit plant' : 'Add plant'}</h2><button class="ghost-button" data-action="close-plant-modal">✕</button></div>
+        <div class="modal-header"><h2>${uiState.editingPlantId ? 'Edit plant' : 'Add plant'}</h2><button class="ghost-button icon-button" data-action="close-plant-modal">✕</button></div>
         <div class="inline-form-grid">
           <label>Plant name<input data-field="name" data-form="plant" value="${escapeHtml(draft.name)}" /></label>
           <label>Photo / emoji<input data-field="photo" data-form="plant" value="${escapeHtml(draft.photo)}" /></label>
@@ -283,7 +366,7 @@ const renderPlantModal = () => {
           <label>Room / location<input data-field="location" data-form="plant" value="${escapeHtml(draft.location)}" /></label>
           <label>Date added<input type="date" data-field="dateAdded" data-form="plant" value="${draft.dateAdded}" /></label>
           <label>Last watered<input type="date" data-field="lastWateredDate" data-form="plant" value="${draft.lastWateredDate}" /></label>
-          <label>Watering interval (days)<input type="number" min="1" data-field="wateringIntervalDays" data-form="plant" value="${draft.wateringIntervalDays}" /></label>
+          <label>Watering interval (days)<input type="number" min="1" inputmode="numeric" data-field="wateringIntervalDays" data-form="plant" value="${draft.wateringIntervalDays}" /></label>
           <label>Last repotted<input type="date" data-field="lastRepottedDate" data-form="plant" value="${draft.lastRepottedDate}" /></label>
           <label>Condition<select data-field="condition" data-form="plant">${['Good', 'Okay', 'Needs attention', 'Sick'].map((option) => `<option ${draft.condition === option ? 'selected' : ''}>${option}</option>`).join('')}</select></label>
           <label>Recommendation<select data-field="recommendationId" data-form="plant">${Object.entries(recommendationLibrary).map(([key, value]) => `<option value="${key}" ${draft.recommendationId === key ? 'selected' : ''}>${value.label}</option>`).join('')}</select></label>
@@ -307,7 +390,7 @@ const renderSeedlingModal = () => {
   return `
     <div class="modal-backdrop">
       <div class="modal-card">
-        <div class="modal-header"><h2>${uiState.editingSeedlingId ? 'Edit seedling plan' : 'Add seedling plan'}</h2><button class="ghost-button" data-action="close-seedling-modal">✕</button></div>
+        <div class="modal-header"><h2>${uiState.editingSeedlingId ? 'Edit seedling plan' : 'Add seedling plan'}</h2><button class="ghost-button icon-button" data-action="close-seedling-modal">✕</button></div>
         <div class="inline-form-grid">
           <label class="full-width">Plant name<input data-field="plantName" data-form="seedling" value="${escapeHtml(draft.plantName)}" /></label>
           ${stages.map(([key, label]) => `<label>${label}<input type="date" data-form="seedling-date" data-field="${key}" value="${draft.dates[key]}" /></label>`).join('')}
@@ -319,7 +402,44 @@ const renderSeedlingModal = () => {
     </div>`;
 };
 
-const mainMarkup = (snapshot) => {
+const authMarkup = () => {
+  const enteringExisting = uiState.authMode === 'enter';
+  return `
+    <div class="app-shell auth-shell">
+      <section class="hero-card auth-hero">
+        <div>
+          <p class="eyebrow">Plant care planner</p>
+          <h1>Keep your plant data tied to one simple ID.</h1>
+          <p class="hero-copy">Create a short ID or enter an existing one to open your personal watering logs, plants, and seedling plans on this device.</p>
+        </div>
+        <div class="hero-actions auth-actions">
+          <button class="primary-button" data-action="auth-create">Create new ID</button>
+          <button class="secondary-button" data-action="auth-enter-mode">Enter existing ID</button>
+        </div>
+      </section>
+      <main class="content-grid auth-grid">
+        ${card('How it works', `
+          <div class="stack-md">
+            <div class="compact-info"><span>Create new ID</span><strong>Generate a short ID and save it locally.</strong></div>
+            <div class="compact-info"><span>Enter existing ID</span><strong>Use the same ID again to restore that profile on this device.</strong></div>
+            <div class="compact-info"><span>Data isolation</span><strong>Plants, watering logs, and seedling plans stay scoped to each ID.</strong></div>
+          </div>
+        `, 'Local-first auth')}
+        ${card(enteringExisting ? 'Enter your existing ID' : 'Ready to get started?', `
+          <div class="stack-md">
+            ${enteringExisting ? `<label>User ID<input data-auth-field="userId" placeholder="FLR-ABC-123" value="${escapeHtml(uiState.authDraft)}" autocapitalize="characters" spellcheck="false" /></label>` : '<p class="muted-block">Generate a new ID instantly and stay signed in between sessions on this device.</p>'}
+            ${uiState.authError ? `<p class="error-text">${uiState.authError}</p>` : ''}
+            ${uiState.authBusy ? loadingState(enteringExisting ? 'Opening your profile…' : 'Creating your profile…') : ''}
+            <div class="action-grid">
+              ${enteringExisting ? '<button class="secondary-button" data-action="auth-cancel">Back</button><button class="primary-button" data-action="auth-submit-existing">Open profile</button>' : '<button class="primary-button" data-action="auth-create">Generate ID and continue</button><button class="ghost-button" data-action="auth-enter-mode">I already have an ID</button>'}
+            </div>
+          </div>
+        `, enteringExisting ? 'Format: FLR-ABC-123' : 'No password needed')}
+      </main>
+    </div>`;
+};
+
+const mainMarkup = (snapshot, session) => {
   const plants = selectors.activePlants(snapshot);
   const notifications = selectors.notificationSummary(snapshot);
   return `
@@ -330,9 +450,10 @@ const mainMarkup = (snapshot) => {
           <h1>Healthy routines for every leaf and seedling.</h1>
           <p class="hero-copy">Track watering, repotting, care history, and recommendations in one calm mobile-first workspace.</p>
         </div>
-        <div class="hero-actions">
+        <div class="hero-actions hero-actions-wrap">
           <button class="primary-button" data-action="quick-add-plant">+ Quick add plant</button>
           <span class="badge neutral">${notifications.length} reminder-ready entries</span>
+          <span class="badge neutral">ID ${escapeHtml(session.userId)}</span>
         </div>
       </header>
       <main class="content-grid">
@@ -340,26 +461,34 @@ const mainMarkup = (snapshot) => {
         ${uiState.tab === 'plants' ? plantSectionMarkup(snapshot) : ''}
         ${uiState.tab === 'watering' ? `<section class="stack-lg"><div class="section-header"><div><h2>Watering calendar</h2><p>Calendar, agenda, and reminder-ready watering structure.</p></div></div>${card('Reminder readiness', '<p class="muted-block">Each plant stores a calculated next watering date based on last watering and interval. This structure is ready for local notifications or backend sync later.</p>', 'Local notifications ready')}${buildWateringCalendar(plants)}<div class="three-column-grid">${card('Today needs watering', plantTaskList(selectors.wateringGroups(snapshot).today))}${card('Overdue', plantTaskList(selectors.wateringGroups(snapshot).overdue))}${card('Upcoming', plantTaskList(selectors.wateringGroups(snapshot).upcoming.slice(0, 6)))}</div></section>` : ''}
         ${uiState.tab === 'seedlings' ? `<section class="stack-lg"><div class="section-header"><div><h2>Seedling & repotting calendar</h2><p>Track seeding, sprouting, transplanting, and larger-pot milestones.</p></div><button class="primary-button" data-action="open-add-seedling">+ Add seedling plan</button></div>${buildSeedlingCalendar(selectors.activeSeedlingTasks(snapshot))}</section>` : ''}
-        ${uiState.tab === 'recommendations' ? recommendationsMarkup(snapshot) : ''}
+        ${uiState.tab === 'settings' ? settingsMarkup(snapshot, session) : ''}
       </main>
-      <nav class="bottom-nav">${['dashboard', 'plants', 'watering', 'seedlings', 'recommendations'].map((tab) => `<button class="${uiState.tab === tab ? 'active' : ''}" data-action="tab" data-tab="${tab}"><span>${icons[tab]}</span><span>${tab === 'dashboard' ? 'Today' : tab === 'recommendations' ? 'Care' : tab.charAt(0).toUpperCase() + tab.slice(1)}</span></button>`).join('')}</nav>
+      <nav class="bottom-nav">${tabs.map((tab) => `<button class="${uiState.tab === tab ? 'active' : ''}" data-action="tab" data-tab="${tab}"><span>${icons[tab]}</span><span>${tab === 'dashboard' ? 'Today' : tab === 'settings' ? 'Settings' : tab.charAt(0).toUpperCase() + tab.slice(1)}</span></button>`).join('')}</nav>
       ${renderPlantModal()}
       ${renderSeedlingModal()}
     </div>`;
 };
 
 const render = () => {
+  const session = getSession();
   const snapshot = getState();
   const firstPlant = selectors.activePlants(snapshot)[0];
-  if (!uiState.selectedPlantId && firstPlant) {
+  if (session.authenticated && !uiState.selectedPlantId && firstPlant) {
     uiState.selectedPlantId = firstPlant.id;
     uiState.conditionDraft = firstPlant.condition;
   }
-  app.innerHTML = mainMarkup(snapshot);
+  if (uiState.isBooting) {
+    app.innerHTML = `<div class="app-shell">${card('Loading planner', loadingState('Preparing your plant workspace…'))}</div>`;
+    return;
+  }
+  app.innerHTML = session.authenticated ? mainMarkup(snapshot, session) : authMarkup();
   const noteField = document.querySelector('#note-draft');
   if (noteField) noteField.addEventListener('input', (event) => { uiState.noteDraft = event.target.value; });
   const conditionField = document.querySelector('#condition-draft');
-  if (conditionField) conditionField.addEventListener('change', (event) => { uiState.conditionDraft = event.target.value; });
+  if (conditionField) {
+    conditionField.value = uiState.conditionDraft;
+    conditionField.addEventListener('change', (event) => { uiState.conditionDraft = event.target.value; });
+  }
 };
 
 app.addEventListener('input', (event) => {
@@ -367,15 +496,10 @@ app.addEventListener('input', (event) => {
   if (!(target instanceof HTMLElement)) return;
   const form = target.dataset.form;
   const field = target.dataset.field;
-  if (form === 'plant' && field) {
-    uiState.plantDraft[field] = target.type === 'number' ? Number(target.value) : target.value;
-  }
-  if (form === 'seedling' && field) {
-    uiState.seedlingDraft[field] = target.value;
-  }
-  if (form === 'seedling-date' && field) {
-    uiState.seedlingDraft.dates[field] = target.value;
-  }
+  if (form === 'plant' && field) uiState.plantDraft[field] = target.type === 'number' ? Number(target.value) : target.value;
+  if (form === 'seedling' && field) uiState.seedlingDraft[field] = target.value;
+  if (form === 'seedling-date' && field) uiState.seedlingDraft.dates[field] = target.value;
+  if (target.dataset.authField === 'userId') uiState.authDraft = target.value.toUpperCase();
 });
 
 app.addEventListener('click', (event) => {
@@ -384,16 +508,89 @@ app.addEventListener('click', (event) => {
   const { action, id, tab, direction, date, target: targetType, taskId, stageId } = target.dataset;
   const snapshot = getState();
 
+  if (action === 'auth-enter-mode') {
+    uiState.authMode = 'enter';
+    uiState.authError = '';
+  }
+  if (action === 'auth-cancel') {
+    uiState.authMode = '';
+    uiState.authDraft = '';
+    uiState.authError = '';
+  }
+  if (action === 'auth-create') {
+    uiState.authError = '';
+    return setAuthBusy(true, () => {
+      resetSessionUi();
+      auth.createUser();
+      uiState.authBusy = false;
+      uiState.authMode = '';
+      uiState.authDraft = '';
+      render();
+    });
+  }
+  if (action === 'auth-submit-existing') {
+    uiState.authError = '';
+    return setAuthBusy(true, () => {
+      try {
+        resetSessionUi();
+        auth.login(uiState.authDraft);
+        uiState.authBusy = false;
+        uiState.authMode = '';
+        uiState.authDraft = '';
+      } catch (error) {
+        uiState.authBusy = false;
+        uiState.authError = error instanceof Error ? error.message : 'Unable to open that ID.';
+        render();
+      }
+    });
+  }
+  if (action === 'copy-user-id') {
+    copyText(getSession().userId)
+      .then((copied) => {
+        uiState.copyMessage = copied ? 'ID copied to clipboard.' : 'Copy failed. Select the ID manually.';
+        render();
+      })
+      .catch(() => {
+        uiState.copyMessage = 'Copy failed. Select the ID manually.';
+        render();
+      });
+  }
+  if (action === 'logout') {
+    auth.logout();
+    resetSessionUi();
+    uiState.authMode = '';
+    uiState.authDraft = '';
+    uiState.authError = '';
+  }
+
   if (action === 'tab') uiState.tab = tab;
   if (action === 'quick-add-plant' || action === 'open-add-plant') openPlantModal(emptyPlant());
   if (action === 'close-plant-modal') uiState.showPlantModal = false;
   if (action === 'close-seedling-modal') uiState.showSeedlingModal = false;
-  if (action === 'select-plant' && id) { const plant = selectors.activePlants(snapshot).find((item) => item.id === id); uiState.selectedPlantId = id; uiState.tab = 'plants'; uiState.conditionDraft = plant?.condition || 'Good'; uiState.noteDraft = ''; }
-  if (action === 'jump-to-plant' && id) { const plant = selectors.activePlants(snapshot).find((item) => item.id === id); uiState.selectedPlantId = id; uiState.tab = 'plants'; uiState.conditionDraft = plant?.condition || 'Good'; uiState.noteDraft = ''; }
+  if (action === 'select-plant' && id) {
+    const plant = selectors.activePlants(snapshot).find((item) => item.id === id);
+    uiState.selectedPlantId = id;
+    uiState.tab = 'plants';
+    uiState.conditionDraft = plant?.condition || 'Good';
+    uiState.noteDraft = '';
+  }
+  if (action === 'jump-to-plant' && id) {
+    const plant = selectors.activePlants(snapshot).find((item) => item.id === id);
+    uiState.selectedPlantId = id;
+    uiState.tab = 'plants';
+    uiState.conditionDraft = plant?.condition || 'Good';
+    uiState.noteDraft = '';
+  }
   if (action === 'mark-watered' && id) actions.markWatered(id);
   if (action === 'mark-repotted' && id) actions.markRepotted(id);
-  if (action === 'archive-plant' && id) { actions.archivePlant(id); if (uiState.selectedPlantId === id) uiState.selectedPlantId = selectors.activePlants(getState())[0]?.id || null; }
-  if (action === 'delete-plant' && id) { actions.deletePlant(id); uiState.selectedPlantId = selectors.activePlants(getState())[0]?.id || null; }
+  if (action === 'archive-plant' && id) {
+    actions.archivePlant(id);
+    if (uiState.selectedPlantId === id) uiState.selectedPlantId = selectors.activePlants(getState())[0]?.id || null;
+  }
+  if (action === 'delete-plant' && id) {
+    actions.deletePlant(id);
+    uiState.selectedPlantId = selectors.activePlants(getState())[0]?.id || null;
+  }
   if (action === 'edit-plant' && id) {
     const plant = selectors.activePlants(snapshot).find((item) => item.id === id);
     if (plant) openPlantModal(plant, id);
@@ -418,11 +615,8 @@ app.addEventListener('click', (event) => {
     }
     uiState.showPlantModal = false;
     uiState.plantError = '';
-    if (uiState.editingPlantId) {
-      actions.updatePlant(uiState.editingPlantId, { ...draft, name: draft.name.trim(), species: draft.species.trim(), location: draft.location.trim(), notes: draft.notes.trim() });
-    } else {
-      actions.addPlant({ ...draft, name: draft.name.trim(), species: draft.species.trim(), location: draft.location.trim(), notes: draft.notes.trim() });
-    }
+    if (uiState.editingPlantId) actions.updatePlant(uiState.editingPlantId, { ...draft, name: draft.name.trim(), species: draft.species.trim(), location: draft.location.trim(), notes: draft.notes.trim() });
+    else actions.addPlant({ ...draft, name: draft.name.trim(), species: draft.species.trim(), location: draft.location.trim(), notes: draft.notes.trim() });
     uiState.editingPlantId = null;
   }
   if (action === 'open-add-seedling') openSeedlingModal(emptySeedlingTask());
@@ -446,11 +640,24 @@ app.addEventListener('click', (event) => {
   if (action === 'archive-seedling' && id) actions.archiveSeedlingTask(id);
   if (action === 'month-nav' && targetType === 'watering') uiState.wateringMonth = new Date(uiState.wateringMonth.getFullYear(), uiState.wateringMonth.getMonth() + Number(direction), 1);
   if (action === 'month-nav' && targetType === 'seedling') uiState.seedlingMonth = new Date(uiState.seedlingMonth.getFullYear(), uiState.seedlingMonth.getMonth() + Number(direction), 1);
-  if (action === 'month-current' && targetType === 'watering') { uiState.wateringMonth = new Date(); uiState.wateringDate = today(); }
+  if (action === 'month-current' && targetType === 'watering') {
+    uiState.wateringMonth = new Date();
+    uiState.wateringDate = today();
+  }
   if (action === 'month-current' && targetType === 'seedling') uiState.seedlingMonth = new Date();
   if (action === 'select-watering-date' && date) uiState.wateringDate = date;
   render();
 });
 
-subscribe(() => render());
+subscribe((snapshot) => {
+  const firstPlant = selectors.activePlants(snapshot)[0];
+  if (!firstPlant) uiState.selectedPlantId = null;
+  render();
+});
+
+window.setTimeout(() => {
+  uiState.isBooting = false;
+  render();
+}, 120);
+
 render();

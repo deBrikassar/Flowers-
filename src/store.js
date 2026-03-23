@@ -1,17 +1,56 @@
-import { createSeedlingStages, emptyPlant, emptySeedlingTask, mockState } from './data.js';
+import { createSeedlingStages, emptyPlant } from './data.js';
 import { addDays, compareDateStrings, dueLabel, formatDate, randomId, today } from './utils.js';
 
-const STORAGE_KEY = 'plant-care-planner-state';
+const LEGACY_STORAGE_KEY = 'plant-care-planner-state';
+const STORAGE_PREFIX = 'plant-care-planner-state';
+const SESSION_KEY = 'plant-care-planner-session';
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
+const emptyState = () => ({ plants: [], careEvents: [], seedlingTasks: [] });
+const userStorageKey = (userId) => `${STORAGE_PREFIX}:${userId}`;
 
-const getStoredState = () => {
+const readStorage = (key) => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : clone(mockState);
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
   } catch {
-    return clone(mockState);
+    return null;
   }
+};
+
+const writeStorage = (key, value) => localStorage.setItem(key, JSON.stringify(value));
+
+const readLegacyState = () => readStorage(LEGACY_STORAGE_KEY);
+const consumeLegacyState = () => {
+  const legacyState = readLegacyState();
+  if (legacyState) localStorage.removeItem(LEGACY_STORAGE_KEY);
+  return legacyState;
+};
+
+const readSession = () => {
+  try {
+    return localStorage.getItem(SESSION_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+
+const normalizeState = (state) => ({
+  plants: (state?.plants || []).map((plant) => ({ ...emptyPlant(), ...plant })),
+  careEvents: state?.careEvents || [],
+  seedlingTasks: (state?.seedlingTasks || []).map((task) => ({
+    ...task,
+    stages: (task.stages || [])
+      .map((stage) => ({ ...stage, status: seedlingStatus(stage) }))
+      .sort((a, b) => compareDateStrings(a.date, b.date)),
+  })),
+});
+
+const getStoredState = (userId) => {
+  if (!userId) return emptyState();
+  const scopedState = readStorage(userStorageKey(userId));
+  if (scopedState) return normalizeState(scopedState);
+  return normalizeState(emptyState());
 };
 
 const nextWateringDate = (plant) => addDays(plant.lastWateredDate, Number(plant.wateringIntervalDays));
@@ -28,34 +67,73 @@ const seedlingStatus = (stage) => {
   return 'Planned';
 };
 
-const normalizeState = (state) => ({
-  ...state,
-  plants: state.plants.map((plant) => ({ ...emptyPlant(), ...plant })),
-  seedlingTasks: state.seedlingTasks.map((task) => ({
-    ...task,
-    stages: task.stages.map((stage) => ({ ...stage, status: seedlingStatus(stage) })).sort((a, b) => compareDateStrings(a.date, b.date)),
-  })),
-});
-
-let state = normalizeState(getStoredState());
+let currentUserId = readSession();
+let state = getStoredState(currentUserId);
 const listeners = new Set();
 
-const persist = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-const emit = () => listeners.forEach((listener) => listener(getState()));
+const persist = () => {
+  if (!currentUserId) return;
+  writeStorage(userStorageKey(currentUserId), state);
+};
+const emit = () => listeners.forEach((listener) => listener(getState(), getSession()));
+const resetSessionState = () => {
+  state = getStoredState(currentUserId);
+};
 
+export const getSession = () => ({ userId: currentUserId, authenticated: Boolean(currentUserId) });
 export const getState = () => normalizeState(clone(state));
 export const subscribe = (listener) => {
   listeners.add(listener);
   return () => listeners.delete(listener);
 };
 
+const setCurrentUser = (userId) => {
+  currentUserId = userId;
+  if (userId) localStorage.setItem(SESSION_KEY, userId);
+  else localStorage.removeItem(SESSION_KEY);
+  resetSessionState();
+  if (userId) persist();
+  emit();
+};
+
 const commit = (updater) => {
+  if (!currentUserId) return;
   state = normalizeState(updater(getState()));
   persist();
   emit();
 };
 
 const newEvent = (plantId, type, note = '', value = '') => ({ id: randomId(), plantId, type, date: today(), note, value });
+
+const USER_ID_PATTERN = /^[A-Z0-9]{3,5}(?:-[A-Z0-9]{3,5}){1,2}$/;
+
+export const auth = {
+  validateUserId: (value) => USER_ID_PATTERN.test(String(value || '').trim().toUpperCase()),
+  normalizeUserId: (value) => String(value || '').trim().toUpperCase(),
+  generateUserId: () => {
+    const parts = Math.random().toString(36).slice(2, 8).toUpperCase().padEnd(6, 'X');
+    return `FLR-${parts.slice(0, 3)}-${parts.slice(3, 6)}`;
+  },
+  createUser: () => {
+    let userId = auth.generateUserId();
+    while (readStorage(userStorageKey(userId))) userId = auth.generateUserId();
+    writeStorage(userStorageKey(userId), normalizeState(consumeLegacyState() || emptyState()));
+    setCurrentUser(userId);
+    return userId;
+  },
+  login: (input) => {
+    const userId = auth.normalizeUserId(input);
+    if (!auth.validateUserId(userId)) throw new Error('Enter a valid ID in the format FLR-ABC-123.');
+    if (!readStorage(userStorageKey(userId))) {
+      const legacyState = consumeLegacyState();
+      writeStorage(userStorageKey(userId), legacyState ? normalizeState(legacyState) : emptyState());
+    }
+    setCurrentUser(userId);
+    return userId;
+  },
+  logout: () => setCurrentUser(''),
+  getCurrentUser: () => currentUserId,
+};
 
 export const selectors = {
   activePlants: (snapshot) => snapshot.plants.filter((plant) => !plant.archived),
