@@ -129,7 +129,7 @@ const plantTaskList = (plants) => {
         </button>
         <div class="row-actions">
           <span class="badge ${selectors.wateringState(plant) === 'overdue' ? 'warning' : selectors.wateringState(plant) === 'today' ? 'today' : 'neutral'}">${dueLabel(selectors.nextWateringDate(plant))}</span>
-          <button class="secondary-button" data-action="mark-watered" data-id="${plant.id}">Watered</button>
+          <button class="secondary-button button--md" data-action="mark-watered" data-id="${plant.id}">Watered</button>
         </div>
       </div>`).join('')}</div>`;
 };
@@ -143,9 +143,9 @@ const buildWateringCalendar = (plants) => {
     <div class="calendar-layout">
       ${card('Month view', `
         <div class="calendar-controls">
-          <button class="ghost-button" data-action="month-nav" data-target="watering" data-direction="-1">←</button>
-          <button class="ghost-button" data-action="month-current" data-target="watering">Today</button>
-          <button class="ghost-button" data-action="month-nav" data-target="watering" data-direction="1">→</button>
+          <button class="ghost-button button--md" data-action="month-nav" data-target="watering" data-direction="-1">←</button>
+          <button class="ghost-button button--md" data-action="month-current" data-target="watering">Today</button>
+          <button class="ghost-button button--md" data-action="month-nav" data-target="watering" data-direction="1">→</button>
         </div>
         <div class="calendar-grid">
           ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((label) => `<span class="calendar-label">${label}</span>`).join('')}
@@ -165,8 +165,8 @@ const buildWateringCalendar = (plants) => {
           <div class="list-row task-row">
             <div><strong>${escapeHtml(plant.photo)} ${escapeHtml(plant.name)}</strong><p>${escapeHtml(plant.location)}</p></div>
             <div class="row-actions">
-              <button class="ghost-button" data-action="jump-to-plant" data-id="${plant.id}">Details</button>
-              <button class="secondary-button" data-action="mark-watered" data-id="${plant.id}">Watered</button>
+              <button class="ghost-button button--md" data-action="jump-to-plant" data-id="${plant.id}">Details</button>
+              <button class="secondary-button button--md" data-action="mark-watered" data-id="${plant.id}">Watered</button>
             </div>
           </div>`).join('')}</div>` : emptyState('No watering tasks', 'Pick another date to review scheduled watering.'), formatDate(uiState.wateringDate))}
     </div>`;
@@ -187,23 +187,23 @@ const buildSeedlingCalendar = (tasks) => {
             </div>
             <div class="row-actions">
               <span class="badge ${stage.status === 'Done' ? 'success' : stage.status === 'Due' ? 'warning' : 'neutral'}">${stage.status}</span>
-              <button class="ghost-button" data-action="toggle-stage" data-task-id="${task.id}" data-stage-id="${stage.id}">${stage.completedAt ? 'Undo' : 'Done'}</button>
+              <button class="ghost-button button--md" data-action="toggle-stage" data-task-id="${task.id}" data-stage-id="${stage.id}">${stage.completedAt ? 'Undo' : 'Done'}</button>
             </div>
           </div>`).join('')}
       </div>
       <div class="action-grid compact">
-        <button class="secondary-button" data-action="edit-seedling" data-id="${task.id}">Edit</button>
-        <button class="ghost-button danger" data-action="archive-seedling" data-id="${task.id}">Archive</button>
+        <button class="secondary-button button--md" data-action="edit-seedling" data-id="${task.id}">Edit</button>
+        <button class="danger-button button--md" data-action="archive-seedling" data-id="${task.id}">Archive</button>
       </div>
-    `, 'Stage tracking')).join('') : card('Seedling plans', emptyState('No seedling plans yet', 'Add a plan to track sprouting and transplant milestones.', '<button class="primary-button" data-action="open-add-seedling">Add seedling plan</button>'));
+    `, 'Stage tracking')).join('') : card('Seedling plans', emptyState('No seedling plans yet', 'Add a plan to track sprouting and transplant milestones.', '<button class="primary-button button--md" data-action="open-add-seedling">Add seedling plan</button>'));
 
   return `
     <div class="stack-lg">
       ${card('Milestone calendar', `
         <div class="calendar-controls">
-          <button class="ghost-button" data-action="month-nav" data-target="seedling" data-direction="-1">←</button>
-          <button class="ghost-button" data-action="month-current" data-target="seedling">Today</button>
-          <button class="ghost-button" data-action="month-nav" data-target="seedling" data-direction="1">→</button>
+          <button class="ghost-button button--md" data-action="month-nav" data-target="seedling" data-direction="-1">←</button>
+          <button class="ghost-button button--md" data-action="month-current" data-target="seedling">Today</button>
+          <button class="ghost-button button--md" data-action="month-nav" data-target="seedling" data-direction="1">→</button>
         </div>
         <div class="calendar-grid">
           ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((label) => `<span class="calendar-label">${label}</span>`).join('')}
@@ -254,7 +254,7 @@ const plantSectionMarkup = (snapshot) => {
   return `
     <section class="stack-lg two-column-layout">
       <div class="stack-md">
-        <div class="section-header"><div><h2>Plants</h2><p>Keep a clear record for every active plant.</p></div><button class="primary-button" data-action="open-add-plant">+ Add plant</button></div>
+        <div class="section-header"><div><h2>Plants</h2><p>Keep a clear record for every active plant.</p></div><button class="primary-button button--md" data-action="open-add-plant">+ Add plant</button></div>
         ${card('Collection', plants.length ? `<div class="list-stack">${plants.map((plant) => `
             <button class="plant-card ${selectedPlant?.id === plant.id ? 'selected' : ''}" data-action="select-plant" data-id="${plant.id}">
               <div class="plant-card-top">
@@ -262,7 +262,7 @@ const plantSectionMarkup = (snapshot) => {
                 <span class="badge ${conditionTone(plant.condition)}">${plant.condition}</span>
               </div>
               <div class="plant-meta-row"><span>${escapeHtml(plant.location)}</span><span>${dueLabel(selectors.nextWateringDate(plant))}</span></div>
-            </button>`).join('')}</div>` : emptyState('No plants added', 'Add your first plant to start tracking watering and repotting.', '<button class="primary-button" data-action="open-add-plant">Add plant</button>'), `${plants.length} active`)}
+            </button>`).join('')}</div>` : emptyState('No plants added', 'Add your first plant to start tracking watering and repotting.', '<button class="primary-button button--md" data-action="open-add-plant">Add plant</button>'), `${plants.length} active`)}
       </div>
       <div class="stack-md">
         ${selectedPlant ? card(`${escapeHtml(selectedPlant.photo)} ${escapeHtml(selectedPlant.name)}`, `
@@ -276,19 +276,19 @@ const plantSectionMarkup = (snapshot) => {
           </div>
           <p class="muted-block">${escapeHtml(selectedPlant.notes || 'No notes yet.')}</p>
           <div class="action-grid">
-            <button class="secondary-button" data-action="mark-watered" data-id="${selectedPlant.id}">Mark watered</button>
-            <button class="secondary-button" data-action="mark-repotted" data-id="${selectedPlant.id}">Mark repotted</button>
-            <button class="secondary-button" data-action="edit-plant" data-id="${selectedPlant.id}">Edit plant</button>
-            <button class="ghost-button danger" data-action="archive-plant" data-id="${selectedPlant.id}">Archive</button>
+            <button class="secondary-button button--md" data-action="mark-watered" data-id="${selectedPlant.id}">Mark watered</button>
+            <button class="secondary-button button--md" data-action="mark-repotted" data-id="${selectedPlant.id}">Mark repotted</button>
+            <button class="secondary-button button--md" data-action="edit-plant" data-id="${selectedPlant.id}">Edit plant</button>
+            <button class="danger-button button--md" data-action="archive-plant" data-id="${selectedPlant.id}">Archive</button>
           </div>
         `, escapeHtml(selectedPlant.species)) : card('Plant detail', emptyState('Choose a plant', 'Select a plant from the list or add one to see detail and timeline data.'))}
         ${selectedPlant ? card('Quick update', `
             <div class="inline-form-grid">
               <label>Condition<select id="condition-draft"><option>Good</option><option>Okay</option><option>Needs attention</option><option>Sick</option></select></label>
-              <div class="align-end"><button class="secondary-button" data-action="save-condition" data-id="${selectedPlant.id}">Save condition</button></div>
+              <div class="align-end"><button class="secondary-button button--md" data-action="save-condition" data-id="${selectedPlant.id}">Save condition</button></div>
               <label class="full-width">Add note<textarea id="note-draft" rows="4" placeholder="Log an observation or care reminder">${escapeHtml(uiState.noteDraft)}</textarea></label>
-              <button class="secondary-button" data-action="save-note" data-id="${selectedPlant.id}">Add note to history</button>
-              <button class="ghost-button danger" data-action="delete-plant" data-id="${selectedPlant.id}">Delete plant</button>
+              <button class="secondary-button button--md" data-action="save-note" data-id="${selectedPlant.id}">Add note to history</button>
+              <button class="danger-button button--md" data-action="delete-plant" data-id="${selectedPlant.id}">Delete plant</button>
             </div>
           `, 'Timeline-ready') : ''}
         ${selectedPlant ? card('Care timeline', timeline.length ? `<div class="timeline">${timeline.map((event) => `
@@ -334,8 +334,8 @@ const settingsMarkup = (snapshot, session) => {
             <p class="muted-block">This ID scopes your plants, watering logs, and seedling plans on this device. You can later connect the same ID to a backend.</p>
           </div>
           <div class="action-grid">
-            <button class="secondary-button" data-action="copy-user-id">Copy ID</button>
-            <button class="ghost-button danger" data-action="logout">Log out</button>
+            <button class="secondary-button button--md" data-action="copy-user-id">Copy ID</button>
+            <button class="danger-button button--md" data-action="logout">Log out</button>
           </div>
           ${uiState.copyMessage ? `<p class="helper-text">${escapeHtml(uiState.copyMessage)}</p>` : ''}
         `, 'Local profile')}
@@ -358,7 +358,7 @@ const renderPlantModal = () => {
   return `
     <div class="modal-backdrop">
       <div class="modal-card">
-        <div class="modal-header"><h2>${uiState.editingPlantId ? 'Edit plant' : 'Add plant'}</h2><button class="ghost-button icon-button" data-action="close-plant-modal">✕</button></div>
+        <div class="modal-header"><h2>${uiState.editingPlantId ? 'Edit plant' : 'Add plant'}</h2><button class="ghost-button icon-button button--md" data-action="close-plant-modal">✕</button></div>
         <div class="inline-form-grid">
           <label>Plant name<input data-field="name" data-form="plant" value="${escapeHtml(draft.name)}" /></label>
           <label>Photo / emoji<input data-field="photo" data-form="plant" value="${escapeHtml(draft.photo)}" /></label>
@@ -372,7 +372,7 @@ const renderPlantModal = () => {
           <label>Recommendation<select data-field="recommendationId" data-form="plant">${Object.entries(recommendationLibrary).map(([key, value]) => `<option value="${key}" ${draft.recommendationId === key ? 'selected' : ''}>${value.label}</option>`).join('')}</select></label>
           <label class="full-width">Notes<textarea rows="4" data-field="notes" data-form="plant">${escapeHtml(draft.notes)}</textarea></label>
           ${uiState.plantError ? `<p class="error-text full-width">${uiState.plantError}</p>` : ''}
-          <div class="modal-actions full-width"><button class="ghost-button" data-action="close-plant-modal">Cancel</button><button class="primary-button" data-action="submit-plant">Save plant</button></div>
+          <div class="modal-actions full-width"><button class="ghost-button button--md" data-action="close-plant-modal">Cancel</button><button class="primary-button button--md" data-action="submit-plant">Save plant</button></div>
         </div>
       </div>
     </div>`;
@@ -390,13 +390,13 @@ const renderSeedlingModal = () => {
   return `
     <div class="modal-backdrop">
       <div class="modal-card">
-        <div class="modal-header"><h2>${uiState.editingSeedlingId ? 'Edit seedling plan' : 'Add seedling plan'}</h2><button class="ghost-button icon-button" data-action="close-seedling-modal">✕</button></div>
+        <div class="modal-header"><h2>${uiState.editingSeedlingId ? 'Edit seedling plan' : 'Add seedling plan'}</h2><button class="ghost-button icon-button button--md" data-action="close-seedling-modal">✕</button></div>
         <div class="inline-form-grid">
           <label class="full-width">Plant name<input data-field="plantName" data-form="seedling" value="${escapeHtml(draft.plantName)}" /></label>
           ${stages.map(([key, label]) => `<label>${label}<input type="date" data-form="seedling-date" data-field="${key}" value="${draft.dates[key]}" /></label>`).join('')}
           <label class="full-width">Notes<textarea rows="4" data-field="notes" data-form="seedling">${escapeHtml(draft.notes)}</textarea></label>
           ${uiState.seedlingError ? `<p class="error-text full-width">${uiState.seedlingError}</p>` : ''}
-          <div class="modal-actions full-width"><button class="ghost-button" data-action="close-seedling-modal">Cancel</button><button class="primary-button" data-action="submit-seedling">Save plan</button></div>
+          <div class="modal-actions full-width"><button class="ghost-button button--md" data-action="close-seedling-modal">Cancel</button><button class="primary-button button--md" data-action="submit-seedling">Save plan</button></div>
         </div>
       </div>
     </div>`;
@@ -413,8 +413,8 @@ const authMarkup = () => {
           <p class="hero-copy">Create a short ID or enter an existing one to open your personal watering logs, plants, and seedling plans on this device.</p>
         </div>
         <div class="hero-actions auth-actions">
-          <button class="primary-button" data-action="auth-create">Create new ID</button>
-          <button class="secondary-button" data-action="auth-enter-mode">Enter existing ID</button>
+          <button class="primary-button button--md" data-action="auth-create">Create new ID</button>
+          <button class="secondary-button button--md" data-action="auth-enter-mode">Enter existing ID</button>
         </div>
       </section>
       <main class="content-grid auth-grid">
@@ -431,7 +431,7 @@ const authMarkup = () => {
             ${uiState.authError ? `<p class="error-text">${uiState.authError}</p>` : ''}
             ${uiState.authBusy ? loadingState(enteringExisting ? 'Opening your profile…' : 'Creating your profile…') : ''}
             <div class="action-grid">
-              ${enteringExisting ? '<button class="secondary-button" data-action="auth-cancel">Back</button><button class="primary-button" data-action="auth-submit-existing">Open profile</button>' : '<button class="primary-button" data-action="auth-create">Generate ID and continue</button><button class="ghost-button" data-action="auth-enter-mode">I already have an ID</button>'}
+              ${enteringExisting ? '<button class="secondary-button button--md" data-action="auth-cancel">Back</button><button class="primary-button button--md" data-action="auth-submit-existing">Open profile</button>' : '<button class="primary-button button--md" data-action="auth-create">Generate ID and continue</button><button class="ghost-button button--md" data-action="auth-enter-mode">I already have an ID</button>'}
             </div>
           </div>
         `, enteringExisting ? 'Format: FLR-ABC-123' : 'No password needed')}
@@ -451,7 +451,7 @@ const mainMarkup = (snapshot, session) => {
           <p class="hero-copy">Track watering, repotting, care history, and recommendations in one calm mobile-first workspace.</p>
         </div>
         <div class="hero-actions hero-actions-wrap">
-          <button class="primary-button" data-action="quick-add-plant">+ Quick add plant</button>
+          <button class="primary-button button--md" data-action="quick-add-plant">+ Quick add plant</button>
           <span class="badge neutral">${notifications.length} reminder-ready entries</span>
           <span class="badge neutral">ID ${escapeHtml(session.userId)}</span>
         </div>
@@ -460,7 +460,7 @@ const mainMarkup = (snapshot, session) => {
         ${uiState.tab === 'dashboard' ? dashboardMarkup(snapshot) : ''}
         ${uiState.tab === 'plants' ? plantSectionMarkup(snapshot) : ''}
         ${uiState.tab === 'watering' ? `<section class="stack-lg"><div class="section-header"><div><h2>Watering calendar</h2><p>Calendar, agenda, and reminder-ready watering structure.</p></div></div>${card('Reminder readiness', '<p class="muted-block">Each plant stores a calculated next watering date based on last watering and interval. This structure is ready for local notifications or backend sync later.</p>', 'Local notifications ready')}${buildWateringCalendar(plants)}<div class="three-column-grid">${card('Today needs watering', plantTaskList(selectors.wateringGroups(snapshot).today))}${card('Overdue', plantTaskList(selectors.wateringGroups(snapshot).overdue))}${card('Upcoming', plantTaskList(selectors.wateringGroups(snapshot).upcoming.slice(0, 6)))}</div></section>` : ''}
-        ${uiState.tab === 'seedlings' ? `<section class="stack-lg"><div class="section-header"><div><h2>Seedling & repotting calendar</h2><p>Track seeding, sprouting, transplanting, and larger-pot milestones.</p></div><button class="primary-button" data-action="open-add-seedling">+ Add seedling plan</button></div>${buildSeedlingCalendar(selectors.activeSeedlingTasks(snapshot))}</section>` : ''}
+        ${uiState.tab === 'seedlings' ? `<section class="stack-lg"><div class="section-header"><div><h2>Seedling & repotting calendar</h2><p>Track seeding, sprouting, transplanting, and larger-pot milestones.</p></div><button class="primary-button button--md" data-action="open-add-seedling">+ Add seedling plan</button></div>${buildSeedlingCalendar(selectors.activeSeedlingTasks(snapshot))}</section>` : ''}
         ${uiState.tab === 'settings' ? settingsMarkup(snapshot, session) : ''}
       </main>
       <nav class="bottom-nav">${tabs.map((tab) => `<button class="${uiState.tab === tab ? 'active' : ''}" data-action="tab" data-tab="${tab}"><span>${icons[tab]}</span><span>${tab === 'dashboard' ? 'Today' : tab === 'settings' ? 'Settings' : tab.charAt(0).toUpperCase() + tab.slice(1)}</span></button>`).join('')}</nav>
